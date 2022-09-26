@@ -1,0 +1,167 @@
+---
+title: "Tidy Data and Visualisation with R Exercises"
+mainfont: Ubuntu
+sansfont: Ubuntu
+monofont: Courier New
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+  word_document: default
+editor_options:
+  chunk_output_type: console
+params:
+  include_output: FALSE
+---
+
+```{r load_libraries, include=FALSE, message=FALSE}
+# load packages
+packages <-  c("knitr", "rprojroot")
+for( package in packages ){
+  library( package, character.only = TRUE )
+}
+```
+
+```{r knitr_options, include=FALSE, message=FALSE}
+opts_chunk$set( fig.width=9, fig.height=6, include=params$include_output, echo=params$include_output, 
+                results = params$include_output, warning = FALSE, message = FALSE,
+                fig.show = params$include_output)
+
+# create logical variable for whether to include page breaks
+# TRUE when output is latex AND include_output is TRUE
+include_breaks <- opts_knit$get('rmarkdown.pandoc.to') == 'latex' &
+  params$include_output
+```
+
+Before you start, make sure you’ve read the document that describes the zebrafish dataset we’re using in this practical. And make sure you’ve put the required file (`Amp.counts.tsv`) in your home directory.
+
+Load the example dataset (`Amp.counts.tsv`) using `read_tsv`.
+
+```{r tidyverse, include = TRUE, echo = TRUE, eval=FALSE}
+library(tidyverse)
+results <- read_tsv('Amp.counts.tsv',
+                    col_types = cols(Chr = col_character(), 
+                                     Strand = col_character()))
+```
+
+```{r load_data, echo = FALSE, eval=TRUE}
+library(tidyverse)
+results <- read_tsv('data/Amp.counts.tsv',
+                    col_types = cols(Chr = col_character(), 
+                                     Strand = col_character()))
+```
+
+## Tidy Data
+
+1.  Use `filter` to find out how many genes have an adjusted p-value less than 0.05.
+
+```{r filtering}
+filter(results, adjp < 0.05) %>%
+  nrow()
+```
+
+2.  Find out which gene has the smallest p-value by sorting the data using `arrange`.
+
+```{r arrange}
+arrange(results, adjp) %>%
+  select(., Gene, Name, adjp) %>%
+  head(1)
+```
+
+3.  Make a new column in the data that is -log10 of the adjusted p-value column. You can use the `log10()` function to calculate this.
+
+```{r mutate}
+results <- mutate(results, 
+       log10p = -log10(adjp))
+
+select(results, Gene, Name, adjp, log10p) %>% 
+  arrange(adjp) %>% 
+  head(5)
+```
+
+```{r results='asis', eval=include_breaks, echo = FALSE}
+cat('\\pagebreak')
+```
+
+4.  Make a new data.frame that contains the Gene, Name and all the normalised count columns.
+
+```{r select}
+normalised_counts <- 
+  select(results, Gene, Name, contains('normalised count'))
+```
+
+5.  Make the new data.frame data tidy using `pivot_longer`.
+
+```{r pivot}
+normalised_counts_long <- 
+  pivot_longer(normalised_counts, c(-Gene, -Name),
+               names_to = 'sample', 
+               values_to = 'normalised count') %>% 
+  # this removes the " normalised count" suffix from
+  # each count column name to leave just the sample name
+  mutate(sample = sub(" normalised count", "", sample))
+```
+
+```{r results='asis', eval=include_breaks, echo = FALSE}
+cat('\\pagebreak')
+```
+
+## Plotting
+
+Load the penguins dataset with `library(palmerpenguins)`.
+
+1.  Using the `penguins` dataset, make a plot of body mass (body_mass_g) against bill length (bill_length_mm).
+
+```{r plot1}
+library(palmerpenguins)
+ggplot(data = penguins) + 
+  geom_point(aes(x = body_mass_g, y = bill_length_mm))
+```
+
+```{r results='asis', eval=include_breaks, echo = FALSE}
+cat('\\pagebreak')
+```
+
+2.  Now colour the points by flipper length (flipper_length_mm) and use the `viridis` colour scale using `scale_colour_viridis_c`.
+
+```{r plot2}
+ggplot(data = penguins) + 
+  geom_point(aes(x = body_mass_g, y = bill_length_mm,
+                 colour = flipper_length_mm)) +
+  scale_colour_viridis_c()
+```
+
+```{r results='asis', eval=include_breaks, echo = FALSE}
+cat('\\pagebreak')
+```
+
+3.  Change the shape of the points to a hollow shape (one of 21-25).  
+Make species the fill colour, and pick 3 colours to use with `scale_fill_manual`.
+
+```{r plot3}
+colour_blind_palette <- 
+  c("#0073B3", "#CC6600", "#009980", "#F2E640", 
+    "#59B3E6", "#CC99B3", "#000000", "#E69900")
+
+ggplot(data = penguins) + 
+  geom_point(aes(x = body_mass_g, y = bill_length_mm,
+                 fill = species),
+             shape = 22, size = 3) +
+  scale_fill_manual(values = colour_blind_palette)
+
+```
+
+```{r results='asis', eval=include_breaks, echo = FALSE}
+cat('\\pagebreak')
+```
+
+`r ifelse(params$include_output, "Alternatively you could specify the fill colours as names", "")`
+
+```{r plot3_names}
+ggplot(data = penguins) + 
+  geom_point(aes(x = body_mass_g, y = bill_length_mm,
+                 fill = species),
+             shape = 22, size = 3) +
+  scale_fill_manual(values = c('firebrick2', 'steelblue3', 
+                               'goldenrod1'))
+```
