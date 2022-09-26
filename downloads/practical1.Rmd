@@ -1,0 +1,458 @@
+---
+title: "Zebrafish Dataset Practical 1"
+mainfont: Ubuntu
+sansfont: Ubuntu
+monofont: Courier New
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+editor_options:
+  chunk_output_type: console
+params:
+  solutions: TRUE
+---
+
+Before you start, make sure you’ve read the document that describes the zebrafish dataset we’re using in this practical. And make sure you’ve put the four required files (`Amp.counts.tsv`, `Amp.samples.tsv`, `Oxy.counts.tsv` and `Oxy.samples.tsv`) in your home directory.
+
+To begin, here are a couple of exercises that require using the command line in Terminal:
+
+1.	Using the `awk` and `wc` commands, work out how many genes are significantly differentially expressed (adjusted p-value < 0.05) for the amphetamine and oxycodone treatments. How do these numbers change if you reduce the adjusted p-value threshold to 0.005 or even 0.0005?
+
+2.	Using `awk`, create two new files that just contain the subset of significantly differentially expressed genes (adjusted p-value < 0.05). Keep these two files as you’ll need them later in the week. Also, using cut, create two new files that just contain the Ensembl IDs of the significantly differentially expressed genes. Again, keep these two files for later.
+
+```{r load-libraries, include=FALSE, message=FALSE}
+# load packages
+packages <-  c("knitr")
+for( package in packages ){
+  library( package, character.only = TRUE )
+}
+```
+
+```{r knitr-options, include=FALSE, message=FALSE}
+# create logical variable for whether output is pdf
+# and for when output is pdf AND params$solutions == TRUE
+pdf_output <- opts_knit$get('rmarkdown.pandoc.to') == 'latex'
+pdf_and_solutions <- opts_knit$get('rmarkdown.pandoc.to') == 'latex' & params$solutions
+
+if (pdf_output) {
+  default_fig_size <- c(4,3)
+} else {
+  default_fig_size <- c(9,6)
+}
+opts_chunk$set(include=TRUE, echo=TRUE, warning = FALSE, 
+               fig.show = FALSE, fig.dim=default_fig_size, fig.align="center")
+```
+
+<hr>
+
+The rest of the practical uses R.  
+Open RStudio and load the tidyverse packages:
+
+```{r packages, message=FALSE}
+library(tidyverse)
+```
+
+Read in the DESeq2 results file:
+
+```{r results-file-1, echo=FALSE}
+# assign the results file name to a variable
+deseq_results_file <- file.path('data', 'Amp.counts.tsv')
+```
+
+```{r results-file-2, eval=FALSE}
+# assign the results file name to a variable
+deseq_results_file <- 'Amp.counts.tsv'
+```
+
+```{r load-data, message=FALSE}
+# load data
+deseq_results <- 
+  read_tsv(deseq_results_file,
+           col_types = cols(Chr = col_character(), 
+                            Strand = col_character()))
+```
+
+Here are some functions for inspecting a data.frame.  
+`head` shows the top 6 rows. If the object is a tibble, only the columns that fit on the width of the page are shown.  
+
+`glimpse` shows the data frame transposed so that the columns become rows. This makes it possible to see all of the columns if they don't fit on one page width.
+
+`View` opens up a new viewer window which display the data like a spreadsheet.
+
+Try them out.
+
+```{r glimpse, eval=FALSE}
+head(deseq_results)
+
+glimpse(deseq_results)
+
+View(deseq_results)
+```
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+## Volcano plot
+
+`EnhancedVolcano` is an R package for making volcano plots. The main function, `EnhancedVolcano()`, expects a data frame with a column of log~2~(fold change) and one for adjusted p value. The names of the genes are supplied as a separate vector.
+
+```{r volcano-plot-1, message=FALSE, fig.dim=c(9,6)}
+library(EnhancedVolcano)
+
+EnhancedVolcano(
+  deseq_results, # results data frame
+  lab = deseq_results$Name,
+  x = 'log2fc', # column name of log2 fold change
+  y = 'adjp' # column name of adjusted pvalue
+)
+```
+
+### Exercises
+
+The `EnhancedVolcano()` function has many ways to customise the plot. Read the documentation (`?EnhancedVolcano`) and re-plot the volcano plot with these changes. 
+
+1. Change the colours of the different categories (NS, Log2FC etc.)
+
+1. Change the p-value cut-off to 0.01
+
+1. Change the log2[Fold Change] cut-off to `log2(1.5)`.
+
+1. Label the 10 genes with smallest p values and change the font face to italic.
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+```{r vol-solutions-h, include=params$solutions, results='asis', echo=FALSE}
+cat("### Solutions\n")
+```
+
+```{r volcano-plot-2, include=params$solutions, fig.dim=c(9,6)}
+# get the gene names of the top 10 genes by p value
+genes_to_label <- deseq_results %>% 
+  arrange(adjp) %>% 
+  pull(Name) %>% 
+  head(10)
+
+EnhancedVolcano(
+  deseq_results,
+  lab = deseq_results$Name,
+  selectLab = genes_to_label,
+  drawConnectors = TRUE,
+  arrowheads = FALSE,
+  min.segment.length = 0.1,
+  x = 'log2fc',
+  y = 'adjp',
+  pCutoff = 1e-02,
+  FCcutoff = log2(1.5),
+  labFace = "italic",
+  col = c("grey80", "grey80", "#59B3E6", "#CC6600"),
+  title = "Amphetamine-treated vs Control",
+  subtitle = NULL
+)
+
+```
+
+```{r vol-solutions-f, include=params$solutions, results='asis', echo=FALSE}
+cat("For an example of using `ggplot2` to create a volcano plot, see the **worked examples** section.\n")
+```
+
+## Heatmap
+
+The `pheatmap` package can be used to create heatmaps.
+
+```{r pheatmap-load}
+library(pheatmap)
+```
+
+First you need to create a matrix of values to plot as a heatmap.  
+Using `filter` and `select`, subset the results to differentially expressed genes (adjp < 0.05) and select the normalised count columns. Save to an object called `sig_counts`
+
+```{r pheatmap-counts, include=params$solutions}
+sig_counts <- deseq_results %>% 
+  # filter to DE genes
+  filter(adjp < 0.05) %>% 
+  # select normalised count columns
+  select(contains(' normalised count'))
+```
+
+The column names all contain the string ' normalised count'. The column names get used as x-axis labels on the heatmap, so we need to remove it. We can set the column names of the data frame with the `colnames` function and use the `str_replace` function from the `stringr` package to remove the ending.  
+`str_replace` takes 3 arguments. 
+
+1. A vector of strings to do the substitution on
+2. A pattern to look for
+3. A string to replace it with
+
+```{r sub}
+# This substitutes the string " normalised count" with 
+# the empty string ""
+colnames(sig_counts) <- 
+  str_replace(colnames(sig_counts), " normalised count", "")
+```
+
+Plot a heatmap of the normalised counts using the `pheatmap` function
+
+```{r pheatmap}
+pheatmap(sig_counts)
+```
+
+This initial plot has some issues.
+First, the counts need scaling. At the moment, the colour scale is dominated by the small number of very highly expressed genes.
+Scaling is done by mean centering and scaling the counts by the standard deviation for each row  ($\frac{x - \overline{x}}{\sigma}$, [Z-score](https://en.wikipedia.org/wiki/Feature_scaling#Standardization_(Z-score_Normalization))).  
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+`pheatmap` has an option `scale`, which can either scale the values by column or row or both
+
+```{r pheatmap-counts-scaled, message=FALSE}
+pheatmap(sig_counts,
+         scale = "row")
+```
+
+The rows and columns in the heatmap are automatically clustered and a tree for each is drawn. 
+
+The default colour scheme makes it difficult to see values in the middle of the range.
+Let's change the colour palette to one from the `viridis` [package](https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html).
+
+The `inferno` function, from the `viridis` package, returns a vector of n colours (10 in this case) from the inferno colour scale.
+
+```{r inferno, message=FALSE, fig.dim=c(3,2.5)}
+library(viridis)
+scales::show_col(inferno(10), cex_label = 0.6)
+```
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+The `colorRampPalette` function returns a function to interpolate more colours between those supplied to create a smooth colour gradient.
+```{r colorRampPalette, fig.dim=c(4,4)}
+scales::show_col(colorRampPalette(inferno(10))(100), 
+                 cex_label = 0.4)
+```
+
+We can add this to the heatmap using the `color` argument.
+
+```{r add-inferno-palette}
+pheatmap(sig_counts,
+         scale = "row",
+         color = colorRampPalette(inferno(10))(100))
+```
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+### Exercises
+
+Read the documentation for `pheatmap` and re-plot the heatmap with these changes. 
+
+1. Turn off plotting the gene names. There are too many genes in the heatmap to be able to read individual labels.
+
+1. Rotate the column labels.
+
+1. Turn off the column clustering
+
+1. Split the heatmap in half based on the row clustering.
+
+1. Give more room to the gene clustering tree.
+
+```{r heatmap-solutions-h, include=params$solutions, results='asis', echo=FALSE}
+cat("### Solutions\n")
+```
+
+```{r pheatmap-solution, include=params$solutions, fig.dim=c(9,6)}
+pheatmap(sig_counts,
+         scale = "row",
+         cluster_cols = FALSE,
+         color = colorRampPalette(inferno(10))(100),
+         show_rownames = FALSE,
+         angle_col = 45,
+         cutree_rows = 2,
+         treeheight_row = 100)
+```
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+## Count plot
+
+To plot the normalised counts for each sample for a gene, we need a 
+table of the sample info.  
+The samples file has columns for the sample name and drug treatment for each sample.
+
+```{r sample-info-file, echo=FALSE}
+sample_info_file <- file.path('data', 'Amp.samples.tsv')
+```
+
+```{r sample-info-file-2, eval=FALSE}
+sample_info_file <- 'Amp.samples.tsv'
+```
+
+```{r load-sample-info, message=FALSE}
+sample_info <- 
+  read_tsv(sample_info_file,
+           col_names = c('sample', 'treatment')) %>% 
+  # set the order of sample by the order in which they appear
+  # and set levels of treatment explicitly
+  mutate(sample = fct_inorder(sample),
+         treatment = factor(treatment, 
+                            levels = c('Cnt', 'Amp')))
+```
+
+To produce a count plot, we select the `Gene` and `*normalised count` columns,
+make the data tidy and join in the sample information. The [inner_join](https://dplyr.tidyverse.org/reference/mutate-joins.html) function from `dplyr` joins two data frames together by matching values in common columns. In this case, we are going to join the two on the `sample` column.
+
+To make the sample names match those in the sample_info, we need to remove " normalised count" from the column names.
+
+```{r norm-counts, message=FALSE}
+normalised_counts <- 
+  select(deseq_results, Gene, contains('normalised')) %>%
+  # make data tidy
+  pivot_longer(cols = -Gene, 
+               names_to = "sample", 
+               values_to = "count") %>% 
+  # rename columns by removing " normalised count"
+  # and set levels of sample using sample info
+  mutate(sample = str_replace(sample, " normalised count", ""),
+         sample = factor(sample, 
+                        levels = levels(sample_info$sample))) %>% 
+  # join in sample information
+  inner_join(sample_info)
+```
+
+Then we filter to get the counts for a specific gene.
+
+```{r counts-for-gene}
+# get a specific gene
+# ENSDARG00000031683 == fosab
+counts_for_gene <- filter(normalised_counts, 
+                          Gene == "ENSDARG00000031683")
+```
+
+To see what the `counts_for_gene` object looks like, try `head(counts_for_gene)`.  
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+To see the counts for each individual sample we can plot sample on the x-axis and count on the y,
+like this:
+
+```{r basic-count-plot}
+basic_count_plot <- ggplot(data = counts_for_gene) +
+  geom_point( aes(x = sample, y = count) ) + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90))
+
+print(basic_count_plot)
+```
+
+We can customise the plot to make it look nicer by colouring the points
+by the treatment variable.
+
+```{r counts-treatment}
+# plot as points in different colours
+sample_count_plot_coloured <- ggplot(data = counts_for_gene) +
+  # fill points by treatment variable
+  geom_point( aes(x = sample, y = count, fill = treatment),
+              # shape names can be used as well as numbers
+              size = 3, shape = 'circle filled') + 
+  # fill using the viridis scale
+  scale_fill_viridis_d() +
+  # tidy up the labels
+  labs(x = "Sample", y = "Normalised Count", fill = "Treatment") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90))
+
+print(sample_count_plot_coloured)
+```
+
+With this plot, we can see the normalised count value for each individual sample, 
+but with lots of samples this will become unwieldy. Another option is to group
+the points by the `treatment` variable.
+
+```{r points-by-treatment}
+# plot points by treatment status
+points_by_treatment <- ggplot(data = counts_for_gene) +
+  geom_point( aes(x = treatment, y = count, fill = treatment), 
+              size = 3, shape = 'circle filled') + 
+  scale_fill_viridis_d() +
+  labs(y = "Normalised Count", fill = "Treatment") +
+  theme_minimal() +
+  # this removes the x-axis title
+  theme(axis.title.x = element_blank())
+
+print(points_by_treatment)
+```
+
+The points for each treatment group appear at the same x position and may plot 
+on top of each other. To avoid this we can add a random shift left or right to
+spread the points out. 
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+The `position` argument of `geom_point` is used to adjust 
+the position of the points.  
+The `position_jitter` function adds a small value to 
+both the x and y values.  
+Use the `width` and `height` arguments to control how
+large the spread of values is.  
+The `seed` argument makes the jitter reproducible.
+
+```{r points-jittered}
+# jitter points to prevent overplotting
+points_jittered <- ggplot(data = counts_for_gene) +
+  geom_point( aes(x = treatment, y = count, fill = treatment), 
+              size = 3, shape = 'circle filled', 
+              position = position_jitter(width = 0.2, 
+                                         height = 0,
+                                         seed = 16354)) + 
+  scale_fill_viridis_d() +
+  labs(y = "Normalised Count", fill = "Treatment") +
+  theme_minimal() +
+  theme(axis.title.x = element_blank())
+
+print(points_jittered)
+```
+
+### Exercises
+
+
+1. Try plotting a boxplot grouped by `treatment` instead of points for each sample.
+
+<br>
+<br>
+
+```{r results='asis', eval=pdf_and_solutions, echo = FALSE}
+cat('\\pagebreak')
+```
+
+```{r counts-solutions-h, include=params$solutions, results='asis', echo=FALSE}
+cat("### Solutions\n")
+```
+
+```{r boxplot, include=params$solutions}
+# boxplot 
+basic_boxplot <- ggplot(data = counts_for_gene) +
+  geom_boxplot( aes(x = treatment, y = count, fill = treatment)) + 
+  scale_fill_viridis_d() +
+  labs(y = "Normalised Count", fill = "Treatment") +
+  theme_minimal() +
+  theme(axis.title.x = element_blank())
+
+print(basic_boxplot)
+```
+
+```{r results='asis', eval=pdf_output, echo = FALSE}
+cat('\\pagebreak')
+```
+
+```{r child = c('ggplot-worked-examples.Rmd')}
+```
