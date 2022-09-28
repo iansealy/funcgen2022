@@ -1,0 +1,59 @@
+---
+mainfont: Ubuntu
+sansfont: Ubuntu
+monofont: Courier New
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+---
+
+If we wanted to make this look more like a karyogram we could facet the plot by the `Chr` column to split it up into chromosomes. Below I'm using `facet_wrap`, with `ncol = 25` to arrange the chromosomes in one row.
+
+There aren't genes on every chromosome, but we want all the chromosomes to appear. We can add `drop = FALSE` to `facet_wrap` for this.
+
+Also, I've changed the variable mapped to the x aesthetic to be `Strand` as a factor to spread the points out a bit. I've also coloured the points by `Strand` as well.
+
+```{r plot-facet, include=TRUE}
+ggplot(data = lens_genes) +
+  geom_jitter(aes(x = factor(Strand), y = Start,
+                  colour = factor(Strand)), 
+              width = 0.2, height = 0, 
+              shape = 21, show.legend = FALSE) +
+  # add colours for Strand
+  scale_color_manual(values = c('firebrick2', 'steelblue3')) +
+  # facet by Chr column, 25 columns in 1 row
+  # don't drop unused levels
+  facet_wrap(vars(Chr), ncol = 25, drop = FALSE)
+```
+
+Adding `theme_void` removes the unnecessary axis labels, but I still want the title and labels on the y-axis so I have added those back using `axis.title.y` and `axis.text.y` in `theme()`.
+
+I've also changed the `panel.background` to have a black border colour makes it look more like chromosomes.
+
+And I've written a function to divide the y-axis breaks by 1000000 so that the axis labels are now in Mb.
+
+```{r plot-final, include=params$solutions, fig.dim=c(8,4)}
+# this function just takes a vector and
+# divides each value in the vector by 1,000,000
+Mb <- function(positions) {
+  positions / 1000000
+}
+
+chr_plot <- ggplot(data = lens_genes) +
+  geom_jitter(aes(x = factor(Strand), y = Start,
+                  colour = factor(Strand)), 
+              width = 0.2, height = 0, 
+              # don't show the legend
+              shape = 21, show.legend = FALSE) +
+  scale_color_manual(values = c('firebrick2', 'steelblue3')) +
+  # use name to change the title of the y-axis
+  # format the labels using the Mb function
+  scale_y_continuous(name = 'Position (Mb)', labels = Mb) +
+  facet_wrap(vars(Chr), ncol = 25, drop = FALSE) +
+  theme_void() +
+  theme(panel.background = element_rect(colour = 'black'),
+        axis.title.y = element_text(colour = 'black', angle = 90),
+        axis.text.y = element_text(colour = 'black'))
+print(chr_plot)
+```
