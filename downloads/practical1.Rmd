@@ -155,8 +155,15 @@ EnhancedVolcano(
 
 ```
 
+```{r volcano-extra, child='practical1-volcano-extra.Rmd', eval=params$solutions}
+```
+
 ```{r vol-solutions-f, include=params$solutions, results='asis', echo=FALSE}
 cat("For an example of using `ggplot2` to create a volcano plot, see the **worked examples** section.\n")
+```
+
+```{r results='asis', eval=pdf_and_solutions, echo = FALSE}
+cat('\\pagebreak')
 ```
 
 ## Heatmap

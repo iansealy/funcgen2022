@@ -1,0 +1,26 @@
+---
+title: "Practical 1 - Volcano plot extra detail"
+mainfont: Ubuntu
+sansfont: Ubuntu
+monofont: Courier New
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+---
+
+### Arrangement of text labels
+
+`EnhancedVolcano` adds text labels for genes, either ones above the log2fc and pvalue cut-offs, or labels supplied to the `selectLab` argument.
+
+if the `drawConnectors` argument is set to FALSE, `EnhancedVolcano` uses `geom_text`/`geom_label`. This  means that the labels are plotted directly on top of the points. Also, if `geom_text` is being used, the `check_overlap` argument is set to TRUE. This means that if any of the text labels overlap previously plotted labels they will not be plotted. This only applies to `geom_text`. If `geom_label` is used, the labels will just be plotted on top of each other.
+
+```{r geom-text-docs, echo=FALSE, fig.cap=NULL}
+knitr::include_graphics(path = 'images/geom-text-check-overlap.png',
+                        dpi = 240)
+```
+
+However, if `drawConnectors` is set to TRUE, the `geom_text_repel`/`geom_label_repel` functions are used. These try to arrange the labels so that they don't overlap points and don't overlap each other. They do this by adding random amounts of jitter to the labels and checking for overlaps. 
+
+This should mean that the labels avoid the points and each other. However, `EnhancedVolcano` subsets the data it gives to `geom_(text/label)_repel` to just the points to be labelled. That means `geom_(text/label)_repel` doesn't know about any of the other points and so can't avoid them.
+
